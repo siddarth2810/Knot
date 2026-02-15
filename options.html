@@ -20,14 +20,6 @@
       <p><small>Tip: Set your Chrome Downloads folder to your Obsidian vault’s inbox folder for instant sync.</small></p>
     </div>
 
-    <script>
-      const saveAsEl = document.getElementById("saveAs");
-      chrome.storage.sync.get(["saveAs"], (res) => {
-        saveAsEl.checked = !!res.saveAs;
-      });
-      saveAsEl.addEventListener("change", () => {
-        chrome.storage.sync.set({ saveAs: saveAsEl.checked });
-      });
-    </script>
+    <script src="options.js"></script>
   </body>
 </html>

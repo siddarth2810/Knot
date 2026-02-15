@@ -120,6 +120,13 @@ function dossierBuildEntry(entry) {
     lines.push("");
   }
 
+  if (entry.imageDataUrl && entry.imageDataUrl.startsWith("data:image/")) {
+    const safeName = (entry.imageName || "image").replace(/[\[\]]/g, "");
+    lines.push("**Image**");
+    lines.push(`![${safeName}](${entry.imageDataUrl})`);
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 

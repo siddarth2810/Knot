@@ -26,13 +26,10 @@ const blogActiveSection = $("blogActiveSection");
 const activeTopic = $("activeTopic");
 const activeStats = $("activeStats");
 const activePath = $("activePath");
-const hlTakeaway = $("hlTakeaway");
-const addHighlightBtn = $("addHighlightBtn");
-const noteInput = $("noteInput");
-const addNoteBtn = $("addNoteBtn");
 const redownloadBtn = $("redownloadBtn");
 const finishTopicBtn = $("finishTopicBtn");
 const blogToast = $("blogToast");
+const openBlogCaptureBtn = $("openBlogCaptureBtn");
 
 // Options link
 $("optionsLink").addEventListener("click", (e) => {
@@ -82,28 +79,6 @@ function relativeTime(isoStr) {
     const days = Math.floor(hrs / 24);
     return `${days}d ago`;
   } catch { return ""; }
-}
-
-/* ---------- Get selection from active tab ---------- */
-async function getTabSelection() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return { url: "", title: "", selectionText: "" };
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => ({
-        url: location.href,
-        title: document.title,
-        selectionText: window.getSelection()?.toString() || "",
-      }),
-    });
-
-    return results?.[0]?.result || { url: tab.url || "", title: tab.title || "", selectionText: "" };
-  } catch (err) {
-    console.warn("getTabSelection failed:", err);
-    return { url: "", title: "", selectionText: "" };
-  }
 }
 
 /* ---------- Render state ---------- */
@@ -183,6 +158,14 @@ clipOpenBtn.addEventListener("click", async () => {
   }
 });
 
+openBlogCaptureBtn?.addEventListener("click", async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id) {
+    chrome.runtime.sendMessage({ type: "OPEN_BLOG_CAPTURE_FROM_POPUP", tabId: tab.id });
+    window.close();
+  }
+});
+
 /* ---------- Blog: Start Topic ---------- */
 startTopicBtn.addEventListener("click", () => withLock(async () => {
   clearToast(startToast);
@@ -201,57 +184,6 @@ startTopicBtn.addEventListener("click", () => withLock(async () => {
     await render();
   } catch (err) {
     toast(startToast, `Error: ${err.message || err}`, "err");
-  }
-}));
-
-/* ---------- Blog: Add Highlight ---------- */
-addHighlightBtn.addEventListener("click", () => withLock(async () => {
-  clearToast(blogToast);
-  const activeId = await dossierGetActiveId();
-  if (!activeId) { toast(blogToast, "No active topic.", "err"); return; }
-
-  toast(blogToast, "Capturing…");
-  const { url, title, selectionText } = await getTabSelection();
-  const takeaway = hlTakeaway.value.trim();
-
-  try {
-    const res = await dossierAddEntry(activeId, {
-      url,
-      pageTitle: title,
-      highlight: selectionText || "",
-      takeaway,
-    });
-    hlTakeaway.value = "";
-    toast(blogToast, `Highlight added (#${res.entryCount}). File updated.`, "ok");
-    await render();
-  } catch (err) {
-    toast(blogToast, `Error: ${err.message || err}`, "err");
-  }
-}));
-
-/* ---------- Blog: Add Note ---------- */
-addNoteBtn.addEventListener("click", () => withLock(async () => {
-  clearToast(blogToast);
-  const activeId = await dossierGetActiveId();
-  if (!activeId) { toast(blogToast, "No active topic.", "err"); return; }
-
-  const note = noteInput.value.trim();
-  if (!note) { toast(blogToast, "Enter a note first.", "err"); return; }
-
-  // Still capture page context for reference
-  const { url, title } = await getTabSelection();
-
-  try {
-    const res = await dossierAddEntry(activeId, {
-      url,
-      pageTitle: title,
-      note,
-    });
-    noteInput.value = "";
-    toast(blogToast, `Note added (#${res.entryCount}). File updated.`, "ok");
-    await render();
-  } catch (err) {
-    toast(blogToast, `Error: ${err.message || err}`, "err");
   }
 }));
 

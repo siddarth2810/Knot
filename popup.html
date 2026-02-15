@@ -188,6 +188,53 @@
     .recent-item .info .sub { font-size: 10px; color: var(--text-dim); }
     .recent-item .actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; }
 
+    /* ── Dropzone & Image Preview ───────────── */
+    .dropzone {
+      border: 1px dashed var(--border-h);
+      border-radius: var(--radius);
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      background: rgba(148,163,184,0.04);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .dropzone:hover { background: rgba(148,163,184,0.08); }
+    .dropzone.active {
+      border-color: var(--accent);
+      background: rgba(96,165,250,0.12);
+    }
+    .img-preview {
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: none;
+    }
+    .img-preview img {
+      display: block;
+      max-height: 120px;
+      width: 100%;
+      object-fit: contain;
+      background: rgba(0,0,0,0.25);
+    }
+    .img-preview-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--surface);
+    }
+    .img-preview-bar .img-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
     /* ── Misc ─────────────────────────────────── */
     .divider { height: 1px; background: var(--border); margin: 14px 0; }
     .hidden { display: none !important; }
@@ -259,30 +306,13 @@
         <div class="path" id="activePath">—</div>
       </div>
 
-      <!-- Add Highlight -->
-      <div class="card">
-        <h3>Add Highlight</h3>
-        <div class="dim mb">Captures current selection + page URL automatically.</div>
-        <div class="field">
-          <label for="hlTakeaway">Takeaway (optional)</label>
-          <input id="hlTakeaway" placeholder="Why this matters…" />
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" id="addHighlightBtn">Add Highlight</button>
-        </div>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="btn accent" id="openBlogCaptureBtn">Open Blog Capture on Page</button>
       </div>
 
-      <!-- Add Note -->
-      <div class="card">
-        <h3>Add Note</h3>
-        <div class="field">
-          <label for="noteInput">Note</label>
-          <textarea id="noteInput" placeholder="Free-form note…"></textarea>
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" id="addNoteBtn">Add Note</button>
-        </div>
-      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px 0;">
+        Capture highlights/notes directly on the page, then come back here to finish the topic.
+      </p>
 
       <div class="btn-row mt">
         <button class="btn" id="redownloadBtn">↓ Re-download file</button>

@@ -2,6 +2,7 @@ if (!globalThis.__clipToMdInitialized) {
   globalThis.__clipToMdInitialized = true;
 
   let panelRoot = null;
+  let panelMode = "clip";
   let latestSelectionText = "";
   let droppedImageDataUrl = "";
   let droppedImageName = "";
@@ -174,7 +175,7 @@ if (!globalThis.__clipToMdInitialized) {
     wrap.className = "wrap";
     wrap.innerHTML = `
       <div class="hdr">
-        <div class="title">Clip to Markdown</div>
+        <div class="title" id="panelTitle">Clip to Markdown</div>
         <div class="actions">
           <button class="btn" id="cancelBtn">Close</button>
           <button class="btn primary" id="saveBtn">Save</button>
@@ -183,7 +184,7 @@ if (!globalThis.__clipToMdInitialized) {
       <div class="body">
         <div class="meta" id="metaLine"></div>
 
-        <div>
+        <div id="takeawayBlock">
           <div class="label">Takeaway</div>
           <input id="takeawayInput" placeholder="Why this matters (optional)" />
         </div>
@@ -213,6 +214,11 @@ if (!globalThis.__clipToMdInitialized) {
               <button class="btn" id="removeImageBtn">Remove</button>
             </div>
           </div>
+        </div>
+
+        <div id="noteBlock" style="display:none;">
+          <div class="label">Note</div>
+          <textarea id="noteInput" placeholder="Optional note for this entry"></textarea>
         </div>
 
         <div class="toast" id="toast"></div>
@@ -270,13 +276,119 @@ if (!globalThis.__clipToMdInitialized) {
     });
   }
 
+  function fileLooksLikeImage(file) {
+    if (!file) return false;
+    if (file.type && file.type.startsWith("image/")) return true;
+    return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif)$/i.test(file.name || "");
+  }
+
+  function isProbablyImageUrl(value) {
+    const v = String(value || "").trim();
+    return /^data:image\//i.test(v) || /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif)(\?.*)?$/i.test(v);
+  }
+
+  function getItemString(item) {
+    return new Promise((resolve) => {
+      try {
+        item.getAsString((text) => resolve(String(text || "")));
+      } catch {
+        resolve("");
+      }
+    });
+  }
+
+  function extractImageUrlFromHtml(html) {
+    const raw = String(html || "").trim();
+    if (!raw) return "";
+    try {
+      const doc = new DOMParser().parseFromString(raw, "text/html");
+      const src = doc.querySelector("img")?.getAttribute("src") || "";
+      return String(src || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  async function pickImageUrlFromDataTransfer(dataTransfer) {
+    if (!dataTransfer) return "";
+
+    const directUriList = String(dataTransfer.getData("text/uri-list") || "").split(/\r?\n/).find(Boolean) || "";
+    if (isProbablyImageUrl(directUriList)) return directUriList.trim();
+
+    const directText = String(dataTransfer.getData("text/plain") || "").trim();
+    if (isProbablyImageUrl(directText)) return directText;
+
+    const items = Array.from(dataTransfer.items || []);
+    for (const item of items) {
+      if (item.kind !== "string") continue;
+      if (item.type === "text/uri-list" || item.type === "text/plain") {
+        const text = (await getItemString(item)).trim();
+        if (isProbablyImageUrl(text)) return text;
+      }
+      if (item.type === "text/html") {
+        const html = await getItemString(item);
+        const src = extractImageUrlFromHtml(html);
+        if (isProbablyImageUrl(src)) return src;
+      }
+    }
+
+    return "";
+  }
+
+  function guessImageNameFromUrl(url) {
+    try {
+      const u = new URL(url, location.href);
+      const base = (u.pathname.split("/").pop() || "").trim();
+      return base || "image";
+    } catch {
+      return "image";
+    }
+  }
+
+  function fetchImageAsDataUrl(url) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "FETCH_IMAGE_AS_DATA_URL", url }, (res) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!res?.ok || !res?.dataUrl) {
+          reject(new Error(res?.error || "Could not import dropped image URL"));
+          return;
+        }
+        resolve(String(res.dataUrl));
+      });
+    });
+  }
+
+  function pickImageFromDataTransfer(dataTransfer) {
+    if (!dataTransfer) return null;
+
+    const items = Array.from(dataTransfer.items || []);
+    for (const item of items) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (fileLooksLikeImage(f)) return f;
+      }
+    }
+
+    const files = Array.from(dataTransfer.files || []);
+    return files.find(fileLooksLikeImage) || null;
+  }
+
   function openPanel(selectionText) {
+    panelMode = "clip";
     const root = ensurePanel();
 
     const url = location.href;
     const title = document.title || "Untitled";
 
     const highlight = normalizeText(selectionText) || latestSelectionText || getLiveSelectionText();
+
+    root.shadowRoot.getElementById("panelTitle").textContent = "Clip to Markdown";
+    root.shadowRoot.getElementById("takeawayBlock").style.display = "block";
+    root.shadowRoot.getElementById("tagsInput").closest("div").style.display = "block";
+    root.shadowRoot.getElementById("noteBlock").style.display = "none";
 
     root.shadowRoot.getElementById("metaLine").textContent = `${title} • ${new URL(url).hostname}`;
     root.shadowRoot.getElementById("highlightBox").value = highlight || "";
@@ -301,7 +413,7 @@ if (!globalThis.__clipToMdInitialized) {
     const imageInput = root.shadowRoot.getElementById("imageInput");
 
     const onPickFile = async (file) => {
-      if (!file || !file.type.startsWith("image/")) {
+      if (!fileLooksLikeImage(file)) {
         toast.textContent = "Please choose an image file.";
         return;
       }
@@ -314,18 +426,60 @@ if (!globalThis.__clipToMdInitialized) {
       }
     };
 
+    const onPickUrl = async (url) => {
+      if (!isProbablyImageUrl(url)) {
+        toast.textContent = "Please choose an image file.";
+        return;
+      }
+      try {
+        const dataUrl = await fetchImageAsDataUrl(url);
+        setImagePreview(root, dataUrl, guessImageNameFromUrl(url));
+        toast.textContent = "Image attached.";
+      } catch (err) {
+        toast.textContent = `Image error: ${String(err.message || err)}`;
+      }
+    };
+
     imageDropZone.onclick = () => imageInput.click();
     imageInput.onchange = () => onPickFile(imageInput.files?.[0]);
 
-    imageDropZone.ondragover = (e) => {
+    const prevent = (e) => {
       e.preventDefault();
+      e.stopPropagation();
+    };
+
+    imageDropZone.ondragenter = (e) => {
+      prevent(e);
       imageDropZone.classList.add("active");
     };
-    imageDropZone.ondragleave = () => imageDropZone.classList.remove("active");
+
+    imageDropZone.ondragover = (e) => {
+      prevent(e);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      imageDropZone.classList.add("active");
+    };
+    imageDropZone.ondragleave = (e) => {
+      prevent(e);
+      if (!imageDropZone.contains(e.relatedTarget)) {
+        imageDropZone.classList.remove("active");
+      }
+    };
     imageDropZone.ondrop = (e) => {
-      e.preventDefault();
+      prevent(e);
       imageDropZone.classList.remove("active");
-      onPickFile(e.dataTransfer?.files?.[0]);
+      (async () => {
+        const file = pickImageFromDataTransfer(e.dataTransfer);
+        if (file) {
+          await onPickFile(file);
+          return;
+        }
+        const url = await pickImageUrlFromDataTransfer(e.dataTransfer);
+        if (url) {
+          await onPickUrl(url);
+          return;
+        }
+        toast.textContent = "Please choose an image file.";
+      })();
     };
 
     root.shadowRoot.getElementById("removeImageBtn").onclick = () => {
@@ -368,10 +522,155 @@ if (!globalThis.__clipToMdInitialized) {
     };
   }
 
+  function openBlogPanel(selectionText) {
+    panelMode = "blog";
+    const root = ensurePanel();
+
+    const url = location.href;
+    const title = document.title || "Untitled";
+    const highlight = normalizeText(selectionText) || latestSelectionText || getLiveSelectionText();
+
+    root.shadowRoot.getElementById("panelTitle").textContent = "Add to Blog Topic";
+    root.shadowRoot.getElementById("takeawayBlock").style.display = "none";
+    root.shadowRoot.getElementById("tagsInput").closest("div").style.display = "none";
+    root.shadowRoot.getElementById("noteBlock").style.display = "block";
+
+    root.shadowRoot.getElementById("metaLine").textContent = `${title} • ${new URL(url).hostname}`;
+    root.shadowRoot.getElementById("highlightBox").value = highlight || "";
+    root.shadowRoot.getElementById("noteInput").value = "";
+    root.shadowRoot.getElementById("noteInput").focus();
+
+    const toast = root.shadowRoot.getElementById("toast");
+    toast.textContent = highlight ? "" : "Tip: select text first for a better highlight.";
+
+    setImagePreview(root, "", "");
+
+    root.shadowRoot.getElementById("refreshHighlightBtn").onclick = () => {
+      captureLatestSelection();
+      const next = latestSelectionText || getLiveSelectionText();
+      root.shadowRoot.getElementById("highlightBox").value = next || "";
+      toast.textContent = next ? "Updated highlight from current selection." : "No current selection found.";
+    };
+
+    const imageDropZone = root.shadowRoot.getElementById("imageDropZone");
+    const imageInput = root.shadowRoot.getElementById("imageInput");
+
+    const onPickFile = async (file) => {
+      if (!fileLooksLikeImage(file)) {
+        toast.textContent = "Please choose an image file.";
+        return;
+      }
+      try {
+        const dataUrl = await readImageFile(file);
+        setImagePreview(root, dataUrl, file.name || "image");
+        toast.textContent = "Image attached.";
+      } catch (err) {
+        toast.textContent = `Image error: ${String(err.message || err)}`;
+      }
+    };
+
+    const onPickUrl = async (urlValue) => {
+      if (!isProbablyImageUrl(urlValue)) {
+        toast.textContent = "Please choose an image file.";
+        return;
+      }
+      try {
+        const dataUrl = await fetchImageAsDataUrl(urlValue);
+        setImagePreview(root, dataUrl, guessImageNameFromUrl(urlValue));
+        toast.textContent = "Image attached.";
+      } catch (err) {
+        toast.textContent = `Image error: ${String(err.message || err)}`;
+      }
+    };
+
+    imageDropZone.onclick = () => imageInput.click();
+    imageInput.onchange = () => onPickFile(imageInput.files?.[0]);
+
+    const prevent = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    imageDropZone.ondragenter = (e) => {
+      prevent(e);
+      imageDropZone.classList.add("active");
+    };
+
+    imageDropZone.ondragover = (e) => {
+      prevent(e);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      imageDropZone.classList.add("active");
+    };
+
+    imageDropZone.ondragleave = (e) => {
+      prevent(e);
+      if (!imageDropZone.contains(e.relatedTarget)) {
+        imageDropZone.classList.remove("active");
+      }
+    };
+
+    imageDropZone.ondrop = (e) => {
+      prevent(e);
+      imageDropZone.classList.remove("active");
+      (async () => {
+        const file = pickImageFromDataTransfer(e.dataTransfer);
+        if (file) {
+          await onPickFile(file);
+          return;
+        }
+        const urlValue = await pickImageUrlFromDataTransfer(e.dataTransfer);
+        if (urlValue) {
+          await onPickUrl(urlValue);
+          return;
+        }
+        toast.textContent = "Please choose an image file.";
+      })();
+    };
+
+    root.shadowRoot.getElementById("removeImageBtn").onclick = () => {
+      setImagePreview(root, "", "");
+      imageInput.value = "";
+      toast.textContent = "Image removed.";
+    };
+
+    root.shadowRoot.getElementById("saveBtn").onclick = async () => {
+      const payload = {
+        url,
+        title,
+        highlight: root.shadowRoot.getElementById("highlightBox").value || "",
+        note: root.shadowRoot.getElementById("noteInput").value || "",
+        imageDataUrl: droppedImageDataUrl,
+        imageName: droppedImageName,
+      };
+
+      toast.textContent = "Saving…";
+
+      chrome.runtime.sendMessage({ type: "ADD_TO_ACTIVE_DOSSIER", payload }, (res) => {
+        if (chrome.runtime.lastError) {
+          toast.textContent = `Error: ${chrome.runtime.lastError.message}`;
+          return;
+        }
+        if (!res?.ok) {
+          toast.textContent = `Error: ${res?.error || "unknown"}`;
+          return;
+        }
+        toast.textContent = `Saved ✅ (entry #${res.entryCount || "?"})`;
+        setTimeout(() => {
+          root?.remove();
+          panelRoot = null;
+        }, 520);
+      });
+    };
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "OPEN_CLIPPER") {
       captureLatestSelection();
       openPanel(msg.selectionText || "");
+    }
+    if (msg?.type === "OPEN_BLOG_CAPTURE") {
+      captureLatestSelection();
+      openBlogPanel(msg.selectionText || "");
     }
     if (msg?.type === "GET_SELECTION_DATA") {
       captureLatestSelection();

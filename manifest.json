@@ -19,6 +19,13 @@
         "mac": "Command+Shift+S"
       },
       "description": "Open clipper panel on page"
+    },
+    "open-blog-capture": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B",
+        "mac": "Command+Shift+B"
+      },
+      "description": "Open blog capture panel on page"
     }
   },
   "content_scripts": [

@@ -1,11 +1,18 @@
 importScripts("dossier.js");
 
 const MENU_ID = "clip-to-md-save-selection";
+const BLOG_MENU_ID = "knot-add-selection-to-blog";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: MENU_ID,
     title: "Save selection to Markdown",
+    contexts: ["selection"]
+  });
+
+  chrome.contextMenus.create({
+    id: BLOG_MENU_ID,
+    title: "Add selection to active Blog topic",
     contexts: ["selection"]
   });
 
@@ -53,9 +60,48 @@ function sendOpenClipper(tabId, selectionText) {
   });
 }
 
+function sendOpenBlogCapture(tabId, selectionText) {
+  chrome.tabs.sendMessage(tabId, { type: "OPEN_BLOG_CAPTURE", selectionText: selectionText || "" }, async () => {
+    if (!chrome.runtime.lastError) return;
+
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const url = tab?.url || "";
+      const restricted =
+        url.startsWith("chrome://") ||
+        url.startsWith("chrome-extension://") ||
+        url.startsWith("edge://") ||
+        url.startsWith("about:") ||
+        url.startsWith("view-source:") ||
+        url.includes("chromewebstore.google.com");
+
+      if (restricted) {
+        console.debug("Blog capture unavailable on restricted page:", url);
+        return;
+      }
+
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["contentScript.js"]
+      });
+
+      chrome.tabs.sendMessage(tabId, { type: "OPEN_BLOG_CAPTURE", selectionText: selectionText || "" }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn("Failed to open blog capture:", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (err) {
+      console.warn("Could not inject/open blog capture:", err);
+    }
+  });
+}
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_ID && tab?.id) {
     sendOpenClipper(tab.id, info.selectionText);
+  }
+  if (info.menuItemId === BLOG_MENU_ID && tab?.id) {
+    sendOpenBlogCapture(tab.id, info.selectionText);
   }
 });
 
@@ -63,9 +109,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // The popup sends OPEN_CLIPPER_FROM_POPUP instead.
 
 chrome.commands.onCommand.addListener(async (command) => {
-  if (command !== "open-clipper") return;
+  if (command !== "open-clipper" && command !== "open-blog-capture") return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id) sendOpenClipper(tab.id, "");
+  if (!tab?.id) return;
+
+  if (command === "open-clipper") {
+    sendOpenClipper(tab.id, "");
+    return;
+  }
+
+  sendOpenBlogCapture(tab.id, "");
 });
 
 function slugify(input) {
@@ -150,12 +203,95 @@ async function saveMarkdownFile({ markdown, filename, saveAs }) {
   });
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function fetchImageAsDataUrl(imageUrl) {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Failed to fetch image (${res.status})`);
+
+  const blob = await res.blob();
+  if (!blob.type || !blob.type.startsWith("image/")) {
+    throw new Error("Dropped URL is not an image");
+  }
+
+  const base64 = arrayBufferToBase64(await blob.arrayBuffer());
+  return `data:${blob.type};base64,${base64}`;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Popup asks us to open the in-page clipper
   if (msg?.type === "OPEN_CLIPPER_FROM_POPUP") {
     const tabId = msg.tabId;
     if (tabId) sendOpenClipper(tabId, "");
     return;  // synchronous, no sendResponse needed
+  }
+
+  if (msg?.type === "OPEN_BLOG_CAPTURE_FROM_POPUP") {
+    const tabId = msg.tabId;
+    if (tabId) sendOpenBlogCapture(tabId, "");
+    return;
+  }
+
+  if (msg?.type === "ADD_TO_ACTIVE_DOSSIER") {
+    (async () => {
+      const activeId = await dossierGetActiveId();
+      if (!activeId) {
+        sendResponse({ ok: false, error: "No active Blog topic. Start one from the extension popup first." });
+        return;
+      }
+
+      const {
+        url,
+        title,
+        highlight,
+        takeaway,
+        note,
+        imageDataUrl,
+        imageName,
+      } = msg.payload || {};
+
+      const res = await dossierAddEntry(activeId, {
+        url,
+        pageTitle: title,
+        highlight: highlight || "",
+        takeaway: takeaway || "",
+        note: note || "",
+        imageDataUrl: imageDataUrl || "",
+        imageName: imageName || "",
+      });
+
+      sendResponse({ ok: true, entryCount: res.entryCount, filename: res.meta?.filename || "" });
+    })().catch((err) => {
+      sendResponse({ ok: false, error: String(err?.message || err) });
+    });
+    return true;
+  }
+
+  if (msg?.type === "FETCH_IMAGE_AS_DATA_URL") {
+    (async () => {
+      const inputUrl = String(msg.url || "").trim();
+      if (!inputUrl) throw new Error("Missing image URL");
+
+      if (inputUrl.startsWith("data:image/")) {
+        sendResponse({ ok: true, dataUrl: inputUrl });
+        return;
+      }
+
+      const dataUrl = await fetchImageAsDataUrl(inputUrl);
+      sendResponse({ ok: true, dataUrl });
+    })().catch((err) => {
+      sendResponse({ ok: false, error: String(err?.message || err) });
+    });
+    return true;
   }
 
   (async () => {
