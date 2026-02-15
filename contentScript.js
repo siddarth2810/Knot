@@ -368,10 +368,18 @@ if (!globalThis.__clipToMdInitialized) {
     };
   }
 
-  chrome.runtime.onMessage.addListener((msg) => {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "OPEN_CLIPPER") {
       captureLatestSelection();
       openPanel(msg.selectionText || "");
+    }
+    if (msg?.type === "GET_SELECTION_DATA") {
+      captureLatestSelection();
+      sendResponse({
+        url: location.href,
+        title: document.title || "",
+        selectionText: latestSelectionText || getLiveSelectionText(),
+      });
     }
   });
 }

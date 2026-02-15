@@ -1,3 +1,5 @@
+importScripts("dossier.js");
+
 const MENU_ID = "clip-to-md-save-selection";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -57,9 +59,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id) sendOpenClipper(tab.id, "");
-});
+// NOTE: chrome.action.onClicked does NOT fire when default_popup is set.
+// The popup sends OPEN_CLIPPER_FROM_POPUP instead.
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "open-clipper") return;
@@ -150,6 +151,13 @@ async function saveMarkdownFile({ markdown, filename, saveAs }) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Popup asks us to open the in-page clipper
+  if (msg?.type === "OPEN_CLIPPER_FROM_POPUP") {
+    const tabId = msg.tabId;
+    if (tabId) sendOpenClipper(tabId, "");
+    return;  // synchronous, no sendResponse needed
+  }
+
   (async () => {
     if (msg?.type !== "SAVE_CLIP") return;
 
