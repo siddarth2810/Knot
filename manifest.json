@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Clip to Markdown (Obsidian)",
+  "version": "0.1.0",
+  "description": "Highlight text, save a Markdown clip with receipts (URL + title + highlight) for Obsidian.",
+  "permissions": ["activeTab", "scripting", "downloads", "storage", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Clip to Markdown"
+  },
+  "commands": {
+    "open-clipper": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Open clipper"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

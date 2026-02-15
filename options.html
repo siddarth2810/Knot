@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Clip to Markdown Options</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding: 18px; max-width: 640px; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; }
+      label { display: flex; align-items: center; gap: 10px; }
+      small { color: #555; }
+    </style>
+  </head>
+  <body>
+    <h2>Clip to Markdown Options</h2>
+    <div class="card">
+      <label>
+        <input type="checkbox" id="saveAs" />
+        Ask where to save each clip (Chrome “Save As…”)
+      </label>
+      <p><small>Tip: Set your Chrome Downloads folder to your Obsidian vault’s inbox folder for instant sync.</small></p>
+    </div>
+
+    <script>
+      const saveAsEl = document.getElementById("saveAs");
+      chrome.storage.sync.get(["saveAs"], (res) => {
+        saveAsEl.checked = !!res.saveAs;
+      });
+      saveAsEl.addEventListener("change", () => {
+        chrome.storage.sync.set({ saveAs: saveAsEl.checked });
+      });
+    </script>
+  </body>
+</html>
