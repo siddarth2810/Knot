@@ -1,4 +1,6 @@
 # Knot
+<img width="1502" height="900" alt="screenshot-20260215-103239Z-selected" src="https://github.com/user-attachments/assets/42f12f98-2c87-4967-a1a4-1f2b8ccfc769" />
+
 
 A lightweight **Chrome extension + OpenClaw workflow** for turning what you read on the internet into social posts and blog drafts.
 
@@ -73,6 +75,8 @@ Floating point numbers optimize relative error instead of absolute precision.
 ---
 
 ## Clip → Social Post (OpenClaw)
+<img width="531" height="428" alt="screenshot-20260216-112513Z-selected" src="https://github.com/user-attachments/assets/ceefab0d-39c8-49a1-a7e2-56d65ca4b3e3" />
+
 
 An OpenClaw skill reads the newest clip and generates a social post draft.
 Save the skill in `.openclaw/skills/ship_post/SKILL.md`
@@ -98,6 +102,8 @@ This creates a **low-friction learning → sharing loop**.
 ---
 
 ## Blog Mode
+<img width="423" height="368" alt="screenshot-20260216-112350Z-selected" src="https://github.com/user-attachments/assets/d2a04800-01a3-4f25-9812-7d435b251fed" />
+
 
 Blog mode is designed for **deep learning on a topic**.
 
