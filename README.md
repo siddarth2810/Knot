@@ -1,14 +1,13 @@
 # Knot
 <img width="1502" height="900" alt="screenshot-20260215-103239Z-selected" src="https://github.com/user-attachments/assets/42f12f98-2c87-4967-a1a4-1f2b8ccfc769" />
 
-
+---
 A lightweight **Chrome extension + OpenClaw workflow** for turning what you read on the internet into social posts and blog drafts.
 
 This project is built around a simple idea:
 
 > Capture while learning → structure automatically → ship faster.
 
----
 
 ## Overview
 
@@ -169,7 +168,7 @@ It reduces friction between **learning and publishing**.
 
 ## Project Status
 
-Early prototype — actively evolving.
+Early prototype, Demoed at Build India.
 
 ---
 
@@ -179,4 +178,3 @@ This is not a note-taking tool.
 
 It is a **learning-to-publishing pipeline**.
 
----
